@@ -45,19 +45,25 @@ class Retention(nn.Module):
         return Q @ s_n, s_n
     
     def forward_chunkwise(self, x_i, r_i_1, i):
-         #x_i.size = (batch_size, chunk_size, hidden_size)
-         #r_i_1.size = (batch_size, hidden_size, v_dim)
-         batch_size, chunk_size, _ = x_i.shape
-         D = self._get_D(chunk_size).to(self.W_Q.device)
-         Q = x_i @ self.W_Q
-         K = x_i @ self.W_K
+        #x_i.size = (batch_size, chunk_size, hidden_size)
+        #r_i_1.size = (batch_size, hidden_size, v_dim)
+        batch_size, chunk_size, _ = x_i.shape
+        D = self._get_D(chunk_size).to(self.W_Q.device)
+        Q = x_i @ self.W_Q
+        K = x_i @ self.W_K
+        Q = self.xpos(Q, i * chunk_size)
+        K = self.xpos(K, i * chunk_size, downscale=True)
 
-         Q = self.xpos(Q, i * chunk_size)
-         K = self.xpos(K, i * chunk_size, downscale=True)
+        V = x_i @ self.W_V
 
-         V = x_i @ self.W_V
+        r_i = (K.transpose(-1, -2) @ (V * D[-1].view(1, chunk_size, 1))) + (self.gamma**chunk_size) * r_i_1
+        inner_chunk = ((Q @ K.transpose(-1, -2))) * D.unsqueeze(0) @ V
+        e = torch.zeros(batch_size, chunk_size, 1)
+        for j in range(chunk_size):
+            e[:, j, :] = (self.gamma**(j + 1))
 
-         
+        cross_chunk = (Q @ r_i_1) * e
+        return inner_chunk + cross_chunk, r_i
 
     def _get_D(self, seq_len):
-            pass
+        pass
